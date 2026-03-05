@@ -701,7 +701,7 @@ if __name__ == '__main__':
     save_config(config)
     _start_watcher()
     socketio.run(
-        app, host='0.0.0.0', port=5000,
+        app, host='0.0.0.0', port=int(os.environ.get('PORT', 5001)),
         debug=os.environ.get('FLASK_DEBUG', '0') == '1',
         allow_unsafe_werkzeug=os.environ.get('FLASK_DEBUG', '0') == '1'
     )
