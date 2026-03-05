@@ -183,7 +183,7 @@ def security_headers(response):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "font-src https://fonts.gstatic.com; "
         "img-src 'self' data:; "
-        "connect-src 'self' ws: wss:;"
+        "connect-src 'self' ws: wss: https://cdnjs.cloudflare.com;"
     )
     return response
 
