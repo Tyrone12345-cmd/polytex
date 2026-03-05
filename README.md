@@ -32,7 +32,7 @@ Webbasierte Anwendung zur digitalen Signierung von PDF-Lieferscheinen. Mitarbeit
 
 ```bash
 # Repository klonen
-git clone https://github.com/<user>/polytex.git
+git clone https://github.com/Tyrone12345-cmd/polytex.git
 cd polytex
 
 # Virtuelle Umgebung erstellen & aktivieren
