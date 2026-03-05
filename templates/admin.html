@@ -32,8 +32,8 @@
     <main>
         <div class="admin-box">
             <div class="admin-header">
-                <h1>Einstellungen</h1>
-                <p>Verwalte die Ordner fur Lieferscheine und behalte den Uberblick.</p>
+                <h1>Admin-Panel</h1>
+                <p>Lieferscheine hochladen und Ordner verwalten.</p>
             </div>
 
             <!-- Stats -->
@@ -75,14 +75,34 @@
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                             <strong>{{ config.unbearbeitet_dir }}</strong>
                         {% else %}
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                             <em>Noch kein Ordner ausgewahlt</em>
                         {% endif %}
                     </div>
                     <button class="btn btn-secondary browse-btn" data-key="unbearbeitet_dir" style="margin-top: 12px;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
-                        Ordner andern
+                        Ordner auswahlen
                     </button>
+                </div>
+            </div>
+
+            <!-- PDF Upload Section -->
+            <div class="admin-section">
+                <div class="admin-section-header">
+                    <div class="admin-section-icon" style="background: rgba(59,130,246,0.15); color: #3b82f6;">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <div>
+                        <div class="admin-section-title">PDFs hochladen</div>
+                        <div class="admin-section-subtitle">Lieferscheine als PDF hochladen</div>
+                    </div>
+                </div>
+                <div class="admin-section-body">
+                    <div id="upload-dropzone" style="border: 2px dashed var(--border); border-radius: 12px; padding: 32px; text-align: center; cursor: pointer; transition: all 0.2s;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5; margin-bottom: 12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        <p style="margin: 0 0 8px 0; opacity: 0.7;">PDFs hierher ziehen oder klicken zum Auswahlen</p>
+                        <input type="file" id="pdf-upload-input" multiple accept=".pdf" style="display:none;">
+                    </div>
+                    <div id="upload-status" style="margin-top: 12px; display: none;"></div>
                 </div>
             </div>
 
@@ -103,18 +123,33 @@
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                             <strong>{{ config.bearbeitet_dir }}</strong>
                         {% else %}
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                             <em>Noch kein Ordner ausgewahlt</em>
                         {% endif %}
                     </div>
                     <button class="btn btn-secondary browse-btn" data-key="bearbeitet_dir" style="margin-top: 12px;">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
-                        Ordner andern
+                        Ordner auswahlen
                     </button>
                 </div>
             </div>
         </div>
     </main>
+
+    <!-- Folder Browser Modal -->
+    <div id="folder-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1000; align-items:center; justify-content:center;">
+        <div style="background: var(--bg-primary); border-radius: 16px; width: 90%; max-width: 500px; max-height: 70vh; display: flex; flex-direction: column; border: 1px solid var(--border); box-shadow: 0 25px 50px rgba(0,0,0,0.3);">
+            <div style="padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin:0; font-size: 16px;">Ordner auswahlen</h3>
+                <button id="folder-modal-close" style="background:none; border:none; color: var(--text-secondary); cursor:pointer; font-size: 24px; line-height:1;">&times;</button>
+            </div>
+            <div id="folder-current-path" style="padding: 12px 24px; font-size: 13px; opacity: 0.6; border-bottom: 1px solid var(--border); word-break: break-all;"></div>
+            <div id="folder-list" style="flex:1; overflow-y: auto; padding: 8px;"></div>
+            <div style="padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end;">
+                <button id="folder-cancel-btn" class="btn btn-secondary">Abbrechen</button>
+                <button id="folder-select-btn" class="btn btn-primary" style="background: var(--accent); color: white;">Diesen Ordner wahlen</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast Container -->
     <div class="toast-container" id="toast-container"></div>
@@ -164,47 +199,175 @@
             setTimeout(function() { ref.classList.add('toast-out'); setTimeout(function() { ref.remove(); }, 200); }, 4000);
         }
 
-        // ── Folder Browse ──
-        document.querySelectorAll('.browse-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                var key = this.dataset.key;
-                var button = this;
-                button.disabled = true;
-                button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Dialog offnet sich...';
+        // ── Folder Browser ──
+        (function() {
+            var modal = document.getElementById('folder-modal');
+            var folderList = document.getElementById('folder-list');
+            var pathDisplay = document.getElementById('folder-current-path');
+            var selectBtn = document.getElementById('folder-select-btn');
+            var cancelBtn = document.getElementById('folder-cancel-btn');
+            var closeBtn = document.getElementById('folder-modal-close');
+            var currentPath = '/';
+            var activeKey = '';
 
-                fetch('/admin/browse')
+            function loadFolder(path) {
+                currentPath = path;
+                pathDisplay.textContent = path;
+                folderList.innerHTML = '<div style="padding: 20px; text-align: center; opacity: 0.5;">Laden...</div>';
+                fetch('/admin/browse?path=' + encodeURIComponent(path))
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
-                        button.disabled = false;
-                        button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg> Ordner auswahlen';
-
-                        if (data.error) { showToast(data.error, 'error'); return; }
-                        if (!data.selected) return;
-
-                        fetch('/admin/save', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ key: key, directory: data.selected })
-                        })
-                        .then(function(r) { return r.json(); })
-                        .then(function(result) {
-                            if (result.success) {
-                                var dirEl = document.getElementById('dir-' + key.replace('_dir', ''));
-                                dirEl.className = 'selected-dir configured';
-                                dirEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> <strong>' + data.selected + '</strong>';
-                                showToast('Ordner gespeichert', 'success');
-                            } else {
-                                showToast(result.error, 'error');
-                            }
+                        if (data.error) { folderList.innerHTML = '<div style="padding:20px; color:var(--danger);">' + data.error + '</div>'; return; }
+                        currentPath = data.path;
+                        pathDisplay.textContent = data.path;
+                        var html = '';
+                        if (data.parent) {
+                            html += '<div class="folder-item" data-path="' + data.parent + '" style="padding: 10px 16px; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 10px;">';
+                            html += '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+                            html += '<span>..</span></div>';
+                        }
+                        data.folders.forEach(function(name) {
+                            var full = data.path + (data.path.endsWith('/') ? '' : '/') + name;
+                            html += '<div class="folder-item" data-path="' + full + '" style="padding: 10px 16px; cursor: pointer; border-radius: 8px; display: flex; align-items: center; gap: 10px;">';
+                            html += '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>';
+                            html += '<span>' + name + '</span></div>';
                         });
+                        if (!data.folders.length && !data.parent) html += '<div style="padding:20px; text-align:center; opacity:0.5;">Keine Unterordner</div>';
+                        folderList.innerHTML = html;
+                        folderList.querySelectorAll('.folder-item').forEach(function(item) {
+                            item.addEventListener('click', function() { loadFolder(this.dataset.path); });
+                            item.addEventListener('mouseenter', function() { this.style.background = 'var(--bg-secondary)'; });
+                            item.addEventListener('mouseleave', function() { this.style.background = ''; });
+                        });
+                    });
+            }
+
+            var configDirs = {
+                unbearbeitet_dir: '{{ config.unbearbeitet_dir|default("/", true) }}',
+                bearbeitet_dir: '{{ config.bearbeitet_dir|default("/", true) }}'
+            };
+
+            function openModal(key) {
+                activeKey = key;
+                modal.style.display = 'flex';
+                var startPath = configDirs[key] || '/';
+                loadFolder(startPath);
+            }
+
+            function closeModal() { modal.style.display = 'none'; }
+
+            cancelBtn.addEventListener('click', closeModal);
+            closeBtn.addEventListener('click', closeModal);
+            modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+
+            selectBtn.addEventListener('click', function() {
+                saveFolder(activeKey, currentPath);
+                closeModal();
+            });
+
+            function saveFolder(key, path) {
+                fetch('/admin/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: key, directory: path })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(result) {
+                    if (result.success) {
+                        var dirEl = document.getElementById('dir-' + key.replace('_dir', ''));
+                        dirEl.className = 'selected-dir configured';
+                        dirEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> <strong>' + path + '</strong>';
+                        showToast('Ordner gespeichert', 'success');
+                    } else {
+                        showToast(result.error, 'error');
+                    }
+                });
+            }
+
+            // Try native Windows folder picker first, fall back to web modal
+            var hasNativePicker = null;
+            fetch('/admin/capabilities').then(function(r) { return r.json(); }).then(function(d) { hasNativePicker = d.native_picker; });
+
+            document.querySelectorAll('.browse-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var key = this.dataset.key;
+                    if (hasNativePicker) {
+                        // Native Windows folder dialog
+                        fetch('/admin/browse-native')
+                            .then(function(r) { return r.json(); })
+                            .then(function(data) {
+                                if (data.success && data.path) {
+                                    saveFolder(key, data.path);
+                                }
+                            });
+                    } else {
+                        // Fallback: web-based folder browser
+                        openModal(key);
+                    }
+                });
+            });
+        })();
+
+        // ── PDF Upload ──
+        (function() {
+            var dropzone = document.getElementById('upload-dropzone');
+            var fileInput = document.getElementById('pdf-upload-input');
+            var statusEl = document.getElementById('upload-status');
+
+            dropzone.addEventListener('click', function() { fileInput.click(); });
+
+            dropzone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                dropzone.style.borderColor = 'var(--accent)';
+                dropzone.style.background = 'rgba(59,130,246,0.05)';
+            });
+            dropzone.addEventListener('dragleave', function() {
+                dropzone.style.borderColor = 'var(--border)';
+                dropzone.style.background = '';
+            });
+            dropzone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                dropzone.style.borderColor = 'var(--border)';
+                dropzone.style.background = '';
+                if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
+            });
+
+            fileInput.addEventListener('change', function() {
+                if (this.files.length) uploadFiles(this.files);
+            });
+
+            function uploadFiles(files) {
+                var formData = new FormData();
+                var count = 0;
+                for (var i = 0; i < files.length; i++) {
+                    if (files[i].name.toLowerCase().endsWith('.pdf')) {
+                        formData.append('pdfs', files[i]);
+                        count++;
+                    }
+                }
+                if (!count) { showToast('Nur PDF-Dateien erlaubt', 'warning'); return; }
+
+                statusEl.style.display = 'block';
+                statusEl.innerHTML = '<span style="opacity:0.7;">Lade ' + count + ' Datei(en) hoch...</span>';
+
+                fetch('/admin/upload', { method: 'POST', body: formData })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.success) {
+                            statusEl.innerHTML = '<span style="color: var(--success);">' + data.count + ' PDF(s) hochgeladen!</span>';
+                            showToast(data.count + ' PDF(s) hochgeladen', 'success');
+                            setTimeout(function() { location.reload(); }, 1500);
+                        } else {
+                            statusEl.innerHTML = '<span style="color: var(--danger);">' + data.error + '</span>';
+                            showToast(data.error, 'error');
+                        }
                     })
                     .catch(function() {
-                        button.disabled = false;
-                        button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg> Ordner auswahlen';
+                        statusEl.innerHTML = '<span style="color: var(--danger);">Upload fehlgeschlagen</span>';
                         showToast('Verbindungsfehler', 'error');
                     });
-            });
-        });
+            }
+        })();
     </script>
     <style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
 </body>

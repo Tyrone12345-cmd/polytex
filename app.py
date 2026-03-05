@@ -1,6 +1,17 @@
 import os
 import json
+import platform
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
+
+# Native folder picker available on Windows/macOS with display
+HAS_NATIVE_PICKER = False
+try:
+    if platform.system() in ('Windows', 'Darwin'):
+        import tkinter as tk
+        from tkinter import filedialog
+        HAS_NATIVE_PICKER = True
+except ImportError:
+    pass
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -10,10 +21,20 @@ ADMIN_PASSWORD = 'admin123'
 
 
 def load_config():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    defaults = {
+        'unbearbeitet_dir': os.path.join(base_dir, 'Unbearbeitet'),
+        'bearbeitet_dir': os.path.join(base_dir, 'Bearbeitet')
+    }
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
-    return {'unbearbeitet_dir': '', 'bearbeitet_dir': ''}
+            config = json.load(f)
+        # Ensure defaults are set
+        for k, v in defaults.items():
+            if not config.get(k):
+                config[k] = v
+        return config
+    return defaults
 
 
 def save_config(config):
@@ -396,6 +417,54 @@ def admin_panel():
     return render_template('admin.html', config=config, ub_count=ub_count, ba_count=ba_count)
 
 
+@app.route('/admin/upload', methods=['POST'])
+def admin_upload():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Nicht autorisiert'}), 403
+
+    config = load_config()
+    ub_dir = config.get('unbearbeitet_dir', '')
+    if not ub_dir:
+        return jsonify({'error': 'Unbearbeitet-Ordner nicht konfiguriert'}), 400
+
+    os.makedirs(ub_dir, exist_ok=True)
+
+    files = request.files.getlist('pdfs')
+    if not files:
+        return jsonify({'error': 'Keine Dateien ausgewählt'}), 400
+
+    uploaded = []
+    for f in files:
+        if f and f.filename and f.filename.lower().endswith('.pdf'):
+            safe_name = os.path.basename(f.filename)
+            dest = os.path.join(ub_dir, safe_name)
+            f.save(dest)
+            uploaded.append(safe_name)
+
+    if not uploaded:
+        return jsonify({'error': 'Keine gültigen PDF-Dateien'}), 400
+
+    return jsonify({'success': True, 'count': len(uploaded), 'files': uploaded})
+
+
+@app.route('/download/<filename>')
+def download_pdf(filename):
+    config = load_config()
+    ba_dir = config.get('bearbeitet_dir', '')
+    ub_dir = config.get('unbearbeitet_dir', '')
+
+    safe_name = os.path.basename(filename)
+
+    for d in [ba_dir, ub_dir]:
+        if d and os.path.isdir(d):
+            filepath = os.path.join(d, safe_name)
+            real = os.path.realpath(filepath)
+            if os.path.exists(filepath) and real.startswith(os.path.realpath(d)):
+                return send_file(filepath, as_attachment=True, download_name=safe_name)
+
+    return 'Datei nicht gefunden', 404
+
+
 @app.route('/admin/save', methods=['POST'])
 def admin_save():
     if not session.get('is_admin'):
@@ -412,7 +481,10 @@ def admin_save():
         return jsonify({'error': 'Verzeichnis darf nicht leer sein'}), 400
 
     if not os.path.isdir(directory):
-        return jsonify({'error': 'Verzeichnis existiert nicht'}), 400
+        try:
+            os.makedirs(directory, exist_ok=True)
+        except OSError:
+            return jsonify({'error': 'Verzeichnis konnte nicht erstellt werden'}), 400
 
     config = load_config()
     config[key] = directory
@@ -426,30 +498,48 @@ def admin_browse():
     if not session.get('is_admin'):
         return jsonify({'error': 'Nicht autorisiert'}), 403
 
-    import threading
-    result = {'path': ''}
+    path = request.args.get('path', '/')
+    path = os.path.realpath(path)
 
-    def pick_folder():
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes('-topmost', True)
-        folder = filedialog.askdirectory(title='PDF-Ordner auswählen')
-        root.destroy()
-        result['path'] = folder or ''
+    if not os.path.isdir(path):
+        return jsonify({'error': 'Ordner existiert nicht'}), 400
 
-    # tkinter muss im eigenen Thread laufen (Flask blockiert sonst)
-    t = threading.Thread(target=pick_folder)
-    t.start()
-    t.join()
+    folders = []
+    try:
+        for entry in sorted(os.listdir(path)):
+            full = os.path.join(path, entry)
+            if os.path.isdir(full) and not entry.startswith('.'):
+                folders.append(entry)
+    except PermissionError:
+        return jsonify({'error': 'Zugriff verweigert'}), 403
 
-    selected = result['path']
-    if not selected:
-        return jsonify({'selected': '', 'pdf_count': 0})
+    parent = os.path.dirname(path) if path != '/' else None
+    pdf_count = len([f for f in os.listdir(path) if f.lower().endswith('.pdf')]) if os.path.isdir(path) else 0
 
-    pdf_count = len([f for f in os.listdir(selected) if f.lower().endswith('.pdf')])
-    return jsonify({'selected': selected, 'pdf_count': pdf_count})
+    return jsonify({'path': path, 'parent': parent, 'folders': folders, 'pdf_count': pdf_count})
+
+
+@app.route('/admin/browse-native')
+def admin_browse_native():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Nicht autorisiert'}), 403
+    if not HAS_NATIVE_PICKER:
+        return jsonify({'error': 'Nicht verfügbar'}), 501
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    folder = filedialog.askdirectory(title='Ordner auswählen')
+    root.destroy()
+    if folder:
+        return jsonify({'success': True, 'path': folder})
+    return jsonify({'success': False, 'path': ''})
+
+
+@app.route('/admin/capabilities')
+def admin_capabilities():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Nicht autorisiert'}), 403
+    return jsonify({'native_picker': HAS_NATIVE_PICKER})
 
 
 @app.route('/admin/logout')
@@ -459,6 +549,8 @@ def admin_logout():
 
 
 if __name__ == '__main__':
-    if not os.path.exists(CONFIG_FILE):
-        save_config({'unbearbeitet_dir': '', 'bearbeitet_dir': ''})
+    config = load_config()
+    os.makedirs(config['unbearbeitet_dir'], exist_ok=True)
+    os.makedirs(config['bearbeitet_dir'], exist_ok=True)
+    save_config(config)
     app.run(debug=True, host='0.0.0.0', port=5000)
