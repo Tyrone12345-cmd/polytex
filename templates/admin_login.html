@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Polytex - Admin Login</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,11 +12,7 @@
 <body>
     <header>
         <a href="{{ url_for('index') }}" class="logo">
-            <svg viewBox="0 0 220 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <text x="0" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="32" fill="currentColor" style="color:var(--text-primary)">POLYTEX</text>
-                <path d="M168 8 L188 20 L168 32 Z" fill="#e63920"/>
-                <path d="M178 8 L198 20 L178 32 Z" fill="#e63920" opacity="0.6"/>
-            </svg>
+            <img src="{{ url_for('static', filename='Logo Polytex.png') }}" alt="Polytex" style="height: 36px;">
         </a>
         <div class="header-right">
             <button class="theme-toggle" id="theme-toggle" title="Design wechseln">
@@ -36,6 +33,7 @@
                 </div>
             {% endif %}
             <form method="POST" action="{{ url_for('admin') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <div class="form-group">
                     <label for="password">Passwort</label>
                     <input type="password" id="password" name="password" required autofocus>

@@ -1,0 +1,22 @@
+[Unit]
+Description=Polytex Lieferschein App
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/root/polytex
+Environment="PATH=/root/polytex/venv/bin:/usr/local/bin:/usr/bin"
+EnvironmentFile=/root/polytex/.env
+ExecStart=/root/polytex/venv/bin/gunicorn \
+    --worker-class eventlet \
+    --workers 1 \
+    --bind 127.0.0.1:5000 \
+    --timeout 120 \
+    --access-logfile /root/polytex/access.log \
+    --error-logfile /root/polytex/error.log \
+    app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

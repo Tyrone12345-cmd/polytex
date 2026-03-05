@@ -27,3 +27,5 @@ Desktop.ini
 config.json
 *.pdf
 .unterschriften/
+.secret_key
+.env

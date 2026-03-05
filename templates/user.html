@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Polytex - Lieferscheine</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,11 +12,7 @@
 <body>
     <header>
         <a href="{{ url_for('index') }}" class="logo">
-            <svg viewBox="0 0 220 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <text x="0" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="32" fill="currentColor" style="color:var(--text-primary)">POLYTEX</text>
-                <path d="M168 8 L188 20 L168 32 Z" fill="#e63920"/>
-                <path d="M178 8 L198 20 L178 32 Z" fill="#e63920" opacity="0.6"/>
-            </svg>
+            <img src="{{ url_for('static', filename='Logo Polytex.png') }}" alt="Polytex" style="height: 36px;">
         </a>
         <div class="header-right">
             <button class="theme-toggle" id="theme-toggle" title="Design wechseln">
@@ -43,10 +40,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Unbearbeitet <span class="tab-count">{{ unbearbeitet|length }}</span>
                 </button>
-                <button class="tab" data-tab="bearbeitet">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    Bearbeitet <span class="tab-count">{{ bearbeitet|length }}</span>
-                </button>
+
             </div>
 
             <div class="tab-content active" id="tab-unbearbeitet">
@@ -78,42 +72,7 @@
                 {% endif %}
             </div>
 
-            <div class="tab-content" id="tab-bearbeitet">
-                {% if not bearbeitet %}
-                    <div class="notice">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                        <p>Noch keine bearbeiteten Lieferscheine vorhanden.</p>
-                    </div>
-                {% else %}
-                    <div class="file-list">
-                        {% for file in bearbeitet %}
-                        <div class="file-card">
-                            <div class="file-icon signed">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/></svg>
-                            </div>
-                            <div class="file-info">
-                                <span class="file-name">{{ file }}</span>
-                                <span class="file-status signed" id="status-b-{{ loop.index }}">Laden...</span>
-                            </div>
-                            <div class="file-actions">
-                                <a href="{{ url_for('sign_page', filename=file) }}" class="btn btn-small">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-                                    Ansehen
-                                </a>
-                                <a href="{{ url_for('download_pdf', filename=file) }}" class="btn btn-small" style="background: var(--accent); color: white;">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                    Download
-                                </a>
-                                <button class="btn btn-danger btn-small delete-btn" data-filename="{{ file }}">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                                    Loschen
-                                </button>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                {% endif %}
-            </div>
+
         {% endif %}
     </main>
 
@@ -121,6 +80,19 @@
     <div class="toast-container" id="toast-container"></div>
 
     <script>
+        // ── CSRF Fetch Override ──
+        (function() {
+            var orig = window.fetch;
+            var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            window.fetch = function(url, opts) {
+                if (csrfMeta && opts && opts.method && opts.method !== 'GET') {
+                    opts.headers = opts.headers || {};
+                    opts.headers['X-CSRF-Token'] = csrfMeta.content;
+                }
+                return orig.call(this, url, opts);
+            };
+        })();
+
         // ── Theme Toggle ──
         (function() {
             var toggle = document.getElementById('theme-toggle');
@@ -213,47 +185,93 @@
             });
         })();
 
-        // ── Load Status for Bearbeitet ──
-        document.querySelectorAll('#tab-bearbeitet .file-card').forEach(function(card, index) {
-            var filename = card.querySelector('.file-name').textContent;
-            fetch('/api/status/' + encodeURIComponent(filename))
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    var statusEl = document.getElementById('status-b-' + (index + 1));
-                    if (statusEl && data.signed) {
-                        statusEl.textContent = 'Unterschrieben von ' + data.info.name + ' am ' + data.info.datum;
-                    }
-                });
-        });
 
-        // ── Delete Buttons ──
-        document.querySelectorAll('.delete-btn').forEach(function(btn) {
-            btn.addEventListener('click', function(e) {
-                e.preventDefault();
-                var fname = this.dataset.filename;
-                var card = this.closest('.file-card');
-                showConfirm('Unterschrift loschen?', 'Die Unterschrift fur "' + fname + '" wird geloscht und das PDF zuruck nach Unbearbeitet verschoben.').then(function(confirmed) {
-                    if (!confirmed) return;
-                    fetch('/api/delete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filename: fname })
-                    })
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        if (data.success) {
-                            showToast('Unterschrift erfolgreich geloscht', 'success');
-                            setTimeout(function() { location.reload(); }, 800);
-                        } else {
-                            showToast('Fehler: ' + data.error, 'error');
-                        }
-                    })
-                    .catch(function() {
-                        showToast('Verbindungsfehler', 'error');
-                    });
-                });
+    </script>
+
+    <!-- SocketIO: Real-time file updates -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+    (function() {
+        var lastUb = {{ unbearbeitet|tojson }};
+
+
+        // SVG icon constants
+        var ICON_UNSIGNED = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        var ICON_SIGNED = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/></svg>';
+        var ICON_PEN = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>';
+        var ICON_EYE = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+        var ICON_DL = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+        var ICON_DEL = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>';
+        var ICON_INFO = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+
+        function escHtml(s) {
+            var d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        function renderUnbearbeitet(files) {
+            var container = document.getElementById('tab-unbearbeitet');
+            if (!files.length) {
+                container.innerHTML = '<div class="notice">' + ICON_INFO + '<p>Keine unbearbeiteten Lieferscheine vorhanden.</p></div>';
+                return;
+            }
+            var html = '<div class="file-list">';
+            files.forEach(function(f) {
+                html += '<div class="file-card" style="animation:tabSlideIn 0.3s ease">'
+                    + '<div class="file-icon unsigned">' + ICON_UNSIGNED + '</div>'
+                    + '<div class="file-info"><span class="file-name">' + escHtml(f) + '</span>'
+                    + '<span class="file-status unsigned">Noch nicht unterschrieben</span></div>'
+                    + '<div class="file-actions"><a href="/sign/' + encodeURIComponent(f) + '" class="btn btn-primary">' + ICON_PEN + ' Unterschreiben</a></div>'
+                    + '</div>';
             });
-        });
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+
+
+        function updateTabCounts(ubCount) {
+            var tabs = document.querySelectorAll('.tab-count');
+            if (tabs[0]) tabs[0].textContent = ubCount;
+        }
+
+        // ── Auto-detect new files (polling every 2s) ──
+        function checkForNewFiles() {
+            fetch('/api/files').then(function(r) { return r.json(); }).then(function(data) {
+                var ubChanged = JSON.stringify(data.unbearbeitet) !== JSON.stringify(lastUb);
+                if (!ubChanged) return;
+                var newFiles = data.unbearbeitet.filter(function(f) { return lastUb.indexOf(f) === -1; });
+                lastUb = data.unbearbeitet;
+                updateTabCounts(lastUb.length);
+                renderUnbearbeitet(lastUb);
+                if (newFiles.length === 1) {
+                    window.location.href = '/sign/' + encodeURIComponent(newFiles[0]);
+                } else if (newFiles.length > 1) {
+                    showToast(newFiles.length + ' neue Lieferscheine erkannt', 'success');
+                }
+            }).catch(function() {});
+        }
+        setInterval(checkForNewFiles, 2000);
+
+        // ── WebSocket for instant updates ──
+        try {
+            var socket = io({ transports: ['websocket', 'polling'] });
+            socket.on('files_updated', function(data) {
+                var ubChanged = JSON.stringify(data.unbearbeitet) !== JSON.stringify(lastUb);
+                if (!ubChanged) return;
+                var newFiles = data.unbearbeitet.filter(function(f) { return lastUb.indexOf(f) === -1; });
+                lastUb = data.unbearbeitet;
+                updateTabCounts(lastUb.length);
+                renderUnbearbeitet(lastUb);
+                if (newFiles.length === 1) {
+                    window.location.href = '/sign/' + encodeURIComponent(newFiles[0]);
+                } else if (newFiles.length > 1) {
+                    showToast(newFiles.length + ' neue Lieferscheine erkannt', 'success');
+                }
+            });
+        } catch(e) {}
+    })();
     </script>
 </body>
 </html>

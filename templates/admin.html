@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Polytex - Admin</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,11 +12,7 @@
 <body>
     <header>
         <a href="{{ url_for('index') }}" class="logo">
-            <svg viewBox="0 0 220 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <text x="0" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="32" fill="currentColor" style="color:var(--text-primary)">POLYTEX</text>
-                <path d="M168 8 L188 20 L168 32 Z" fill="#e63920"/>
-                <path d="M178 8 L198 20 L178 32 Z" fill="#e63920" opacity="0.6"/>
-            </svg>
+            <img src="{{ url_for('static', filename='Logo Polytex.png') }}" alt="Polytex" style="height: 36px;">
         </a>
         <div class="header-right">
             <button class="theme-toggle" id="theme-toggle" title="Design wechseln">
@@ -85,27 +82,6 @@
                 </div>
             </div>
 
-            <!-- PDF Upload Section -->
-            <div class="admin-section">
-                <div class="admin-section-header">
-                    <div class="admin-section-icon" style="background: rgba(59,130,246,0.15); color: #3b82f6;">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                    </div>
-                    <div>
-                        <div class="admin-section-title">PDFs hochladen</div>
-                        <div class="admin-section-subtitle">Lieferscheine als PDF hochladen</div>
-                    </div>
-                </div>
-                <div class="admin-section-body">
-                    <div id="upload-dropzone" style="border: 2px dashed var(--border); border-radius: 12px; padding: 32px; text-align: center; cursor: pointer; transition: all 0.2s;">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5; margin-bottom: 12px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        <p style="margin: 0 0 8px 0; opacity: 0.7;">PDFs hierher ziehen oder klicken zum Auswahlen</p>
-                        <input type="file" id="pdf-upload-input" multiple accept=".pdf" style="display:none;">
-                    </div>
-                    <div id="upload-status" style="margin-top: 12px; display: none;"></div>
-                </div>
-            </div>
-
             <!-- Bearbeitet Section -->
             <div class="admin-section">
                 <div class="admin-section-header">
@@ -155,6 +131,19 @@
     <div class="toast-container" id="toast-container"></div>
 
     <script>
+        // ── CSRF Fetch Override ──
+        (function() {
+            var orig = window.fetch;
+            var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            window.fetch = function(url, opts) {
+                if (csrfMeta && opts && opts.method && opts.method !== 'GET') {
+                    opts.headers = opts.headers || {};
+                    opts.headers['X-CSRF-Token'] = csrfMeta.content;
+                }
+                return orig.call(this, url, opts);
+            };
+        })();
+
         // ── Theme Toggle ──
         (function() {
             var toggle = document.getElementById('theme-toggle');
@@ -308,66 +297,7 @@
             });
         })();
 
-        // ── PDF Upload ──
-        (function() {
-            var dropzone = document.getElementById('upload-dropzone');
-            var fileInput = document.getElementById('pdf-upload-input');
-            var statusEl = document.getElementById('upload-status');
 
-            dropzone.addEventListener('click', function() { fileInput.click(); });
-
-            dropzone.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                dropzone.style.borderColor = 'var(--accent)';
-                dropzone.style.background = 'rgba(59,130,246,0.05)';
-            });
-            dropzone.addEventListener('dragleave', function() {
-                dropzone.style.borderColor = 'var(--border)';
-                dropzone.style.background = '';
-            });
-            dropzone.addEventListener('drop', function(e) {
-                e.preventDefault();
-                dropzone.style.borderColor = 'var(--border)';
-                dropzone.style.background = '';
-                if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files);
-            });
-
-            fileInput.addEventListener('change', function() {
-                if (this.files.length) uploadFiles(this.files);
-            });
-
-            function uploadFiles(files) {
-                var formData = new FormData();
-                var count = 0;
-                for (var i = 0; i < files.length; i++) {
-                    if (files[i].name.toLowerCase().endsWith('.pdf')) {
-                        formData.append('pdfs', files[i]);
-                        count++;
-                    }
-                }
-                if (!count) { showToast('Nur PDF-Dateien erlaubt', 'warning'); return; }
-
-                statusEl.style.display = 'block';
-                statusEl.innerHTML = '<span style="opacity:0.7;">Lade ' + count + ' Datei(en) hoch...</span>';
-
-                fetch('/admin/upload', { method: 'POST', body: formData })
-                    .then(function(r) { return r.json(); })
-                    .then(function(data) {
-                        if (data.success) {
-                            statusEl.innerHTML = '<span style="color: var(--success);">' + data.count + ' PDF(s) hochgeladen!</span>';
-                            showToast(data.count + ' PDF(s) hochgeladen', 'success');
-                            setTimeout(function() { location.reload(); }, 1500);
-                        } else {
-                            statusEl.innerHTML = '<span style="color: var(--danger);">' + data.error + '</span>';
-                            showToast(data.error, 'error');
-                        }
-                    })
-                    .catch(function() {
-                        statusEl.innerHTML = '<span style="color: var(--danger);">Upload fehlgeschlagen</span>';
-                        showToast('Verbindungsfehler', 'error');
-                    });
-            }
-        })();
     </script>
     <style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
 </body>

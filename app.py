@@ -1,35 +1,67 @@
 import os
+import re
 import json
+import shutil
+import base64
+import secrets
+import logging
+import datetime
 import platform
-from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, session
+from io import BytesIO
+from functools import wraps
 
-# Native folder picker available on Windows/macOS with display
-HAS_NATIVE_PICKER = False
-try:
-    if platform.system() in ('Windows', 'Darwin'):
-        import tkinter as tk
-        from tkinter import filedialog
-        HAS_NATIVE_PICKER = True
-except ImportError:
-    pass
+from flask import (
+    Flask, render_template, request, jsonify,
+    send_file, redirect, url_for, session, abort
+)
+from flask_socketio import SocketIO
+from watcher import FileWatcher
 
-app = Flask(__name__)
-app.secret_key = os.urandom(24)
+# ──────────────── Configuration ────────────────
 
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'config.json')
-ADMIN_PASSWORD = 'admin123'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
+
+
+def _load_env():
+    """Load .env file if present."""
+    env_path = os.path.join(BASE_DIR, '.env')
+    if os.path.exists(env_path):
+        with open(env_path, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, _, value = line.partition('=')
+                    os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_env()
+
+# Persistent secret key — survives restarts
+_secret_key_file = os.path.join(BASE_DIR, '.secret_key')
+if os.environ.get('SECRET_KEY'):
+    _secret_key = os.environ['SECRET_KEY']
+elif os.path.exists(_secret_key_file):
+    with open(_secret_key_file, 'r') as f:
+        _secret_key = f.read().strip()
+else:
+    _secret_key = secrets.token_hex(32)
+    with open(_secret_key_file, 'w') as f:
+        f.write(_secret_key)
+
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('polytex')
 
 
 def load_config():
-    base_dir = os.path.dirname(os.path.abspath(__file__))
     defaults = {
-        'unbearbeitet_dir': os.path.join(base_dir, 'Unbearbeitet'),
-        'bearbeitet_dir': os.path.join(base_dir, 'Bearbeitet')
+        'unbearbeitet_dir': os.path.join(BASE_DIR, 'Unbearbeitet'),
+        'bearbeitet_dir': os.path.join(BASE_DIR, 'Bearbeitet')
     }
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
-        # Ensure defaults are set
         for k, v in defaults.items():
             if not config.get(k):
                 config[k] = v
@@ -42,6 +74,125 @@ def save_config(config):
         json.dump(config, f, indent=2)
 
 
+# ──────────────── App & Extensions ────────────────
+
+app = Flask(__name__)
+app.secret_key = _secret_key
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+
+socketio = SocketIO(app, async_mode='threading', cors_allowed_origins=[])
+
+# Native folder picker (Windows/macOS desktop only)
+HAS_NATIVE_PICKER = False
+try:
+    if platform.system() in ('Windows', 'Darwin'):
+        import tkinter as tk
+        from tkinter import filedialog
+        HAS_NATIVE_PICKER = True
+except ImportError:
+    pass
+
+
+# ──────────────── File Watcher (Real-time Updates) ────────────────
+
+_watcher = FileWatcher()
+
+
+def _on_files_changed():
+    """Push updated file lists to all connected clients via WebSocket."""
+    config = load_config()
+    socketio.emit('files_updated', {
+        'unbearbeitet': _get_pdfs(config.get('unbearbeitet_dir', '')),
+        'bearbeitet': _get_pdfs(config.get('bearbeitet_dir', ''))
+    })
+
+
+_watcher.set_callback(_on_files_changed)
+
+
+def _start_watcher():
+    config = load_config()
+    dirs = [config.get(k, '') for k in ('unbearbeitet_dir', 'bearbeitet_dir')]
+    _watcher.watch(dirs)
+
+
+# ──────────────── Helpers ────────────────
+
+def _get_pdfs(directory):
+    """Return sorted list of PDF filenames in a directory."""
+    if directory and os.path.isdir(directory):
+        return sorted(f for f in os.listdir(directory) if f.lower().endswith('.pdf'))
+    return []
+
+
+def _safe_name(filename):
+    """Sanitize filename to prevent path traversal."""
+    return os.path.basename(filename)
+
+
+def _is_within(filepath, directory):
+    """Verify filepath resolves inside directory."""
+    real_file = os.path.realpath(filepath)
+    real_dir = os.path.realpath(directory)
+    return real_file.startswith(real_dir + os.sep) or real_file == real_dir
+
+
+def _generate_csrf():
+    """Generate CSRF token stored in session."""
+    if '_csrf' not in session:
+        session['_csrf'] = secrets.token_hex(32)
+    return session['_csrf']
+
+
+def _check_csrf():
+    """Validate CSRF token from header or form field."""
+    token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
+    expected = session.get('_csrf', '')
+    if not token or not expected or not secrets.compare_digest(token, expected):
+        abort(403)
+
+
+def admin_required(f):
+    """Decorator: no-op (password protection removed)."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ──────────────── Security Middleware ────────────────
+
+@app.before_request
+def csrf_protect():
+    """Enforce CSRF token on all state-changing requests."""
+    if request.method in ('POST', 'PUT', 'DELETE'):
+        if request.path.startswith('/socket.io'):
+            return
+        _check_csrf()
+
+
+@app.after_request
+def security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self' ws: wss:;"
+    )
+    return response
+
+
+@app.context_processor
+def inject_csrf():
+    return {'csrf_token': _generate_csrf()}
+
+
 # ──────────────── User Routes ────────────────
 
 @app.route('/')
@@ -49,14 +200,12 @@ def index():
     config = load_config()
     ub_dir = config.get('unbearbeitet_dir', '')
     ba_dir = config.get('bearbeitet_dir', '')
-    unbearbeitet = []
-    bearbeitet = []
-    if ub_dir and os.path.isdir(ub_dir):
-        unbearbeitet = sorted(f for f in os.listdir(ub_dir) if f.lower().endswith('.pdf'))
-    if ba_dir and os.path.isdir(ba_dir):
-        bearbeitet = sorted(f for f in os.listdir(ba_dir) if f.lower().endswith('.pdf'))
-    configured = bool(ub_dir or ba_dir)
-    return render_template('user.html', unbearbeitet=unbearbeitet, bearbeitet=bearbeitet, configured=configured)
+    return render_template(
+        'user.html',
+        unbearbeitet=_get_pdfs(ub_dir),
+        bearbeitet=_get_pdfs(ba_dir),
+        configured=bool(ub_dir or ba_dir)
+    )
 
 
 @app.route('/pdf/<filename>')
@@ -64,103 +213,165 @@ def serve_pdf(filename):
     config = load_config()
     ub_dir = config.get('unbearbeitet_dir', '')
     ba_dir = config.get('bearbeitet_dir', '')
-
-    safe_name = os.path.basename(filename)
+    safe = _safe_name(filename)
     filepath = None
 
-    # In beiden Ordnern direkt suchen
-    for d in [ub_dir, ba_dir]:
-        if d and os.path.isdir(d):
-            candidate = os.path.join(d, safe_name)
-            if os.path.exists(candidate):
-                filepath = candidate
-                break
+    # 1) Check Unbearbeitet (flat)
+    if ub_dir and os.path.isdir(ub_dir):
+        candidate = os.path.join(ub_dir, safe)
+        if os.path.isfile(candidate) and _is_within(candidate, ub_dir):
+            filepath = candidate
 
-    # Falls nicht gefunden: vielleicht wurde die Datei umbenannt — Info-JSONs durchsuchen
-    if not filepath and ba_dir:
-        sign_dir = os.path.join(ba_dir, '.unterschriften')
-        if os.path.isdir(sign_dir):
-            for f in os.listdir(sign_dir):
-                if f.endswith('_info.json'):
-                    info_path = os.path.join(sign_dir, f)
-                    with open(info_path, 'r') as fh:
-                        info = json.load(fh)
-                    if info.get('original_filename') == safe_name:
-                        new_name = info.get('new_filename', '')
-                        candidate = os.path.join(ba_dir, new_name)
-                        if os.path.exists(candidate):
-                            filepath = candidate
-                            break
+    # 2) Check Bearbeitet subfolders
+    if not filepath and ba_dir and os.path.isdir(ba_dir):
+        for entry in os.listdir(ba_dir):
+            sub = os.path.join(ba_dir, entry)
+            if not os.path.isdir(sub):
+                continue
+            # Serve by folder name
+            if entry == safe:
+                candidate = os.path.join(sub, 'Bearbeitet.pdf')
+                if os.path.isfile(candidate):
+                    filepath = candidate
+                    break
+            # Serve by original filename match
+            info_path = os.path.join(sub, 'info.json')
+            if os.path.isfile(info_path):
+                with open(info_path, 'r') as fh:
+                    info = json.load(fh)
+                if info.get('original_filename') == safe:
+                    candidate = os.path.join(sub, 'Bearbeitet.pdf')
+                    if os.path.isfile(candidate):
+                        filepath = candidate
+                        break
 
     if not filepath:
-        return 'Datei nicht gefunden', 404
+        abort(404)
 
-    # Sicherheit: Pfad muss in einem der konfigurierten Ordner liegen
     real = os.path.realpath(filepath)
-    allowed = False
     for d in [ub_dir, ba_dir]:
         if d and real.startswith(os.path.realpath(d)):
-            allowed = True
-            break
-    if not allowed:
-        return 'Zugriff verweigert', 403
-
-    return send_file(filepath, mimetype='application/pdf')
+            return send_file(filepath, mimetype='application/pdf')
+    abort(403)
 
 
 @app.route('/sign/<filename>')
 def sign_page(filename):
-    safe_name = os.path.basename(filename)
-    return render_template('sign.html', filename=safe_name)
+    return render_template('sign.html', filename=_safe_name(filename))
+
+
+@app.route('/api/files')
+def api_files():
+    """Return current file lists as JSON (polling fallback)."""
+    config = load_config()
+    return jsonify({
+        'unbearbeitet': _get_pdfs(config.get('unbearbeitet_dir', '')),
+        'bearbeitet': _get_pdfs(config.get('bearbeitet_dir', ''))
+    })
+
+
+def _clean_liefernummer(raw):
+    """Normalize extracted number: remove internal whitespace, trim separators."""
+    cleaned = re.sub(r'\s+', '', raw)
+    return cleaned.strip(' -/.)')
+
+
+def _normalize_pdf_text(text):
+    """Normalize PDF text for reliable pattern matching."""
+    # Replace Unicode dashes with ASCII hyphen
+    text = re.sub(r'[\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uFE58\uFE63\uFF0D]', '-', text)
+    # Collapse multiple spaces/tabs into one
+    text = re.sub(r'[ \t]+', ' ', text)
+    return text
+
+
+# Lieferschein patterns ordered by confidence (most specific first)
+_LIEF_PATTERNS_HIGH = [
+    r'Lieferschein[\-\s]*(?:Nr\.?|Nummer|No\.?)?[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Lieferschein[\-\s]*(?:Nr\.?|Nummer|No\.?)?[:\s#]*(\d{3,})',
+    r'Liefernummer[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Liefernummer[:\s#]*(\d{3,})',
+    r'Lieferscheinnummer[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Lieferscheinnummer[:\s#]*(\d{3,})',
+    r'Liefer[\-\s]*(?:schein[\-\s]*)?Nr\.?[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Liefer[\-\s]*(?:schein[\-\s]*)?Nr\.?[:\s#]*(\d{3,})',
+    r'LS[\-\s]*Nr\.?[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'LS[\-\s]*Nr\.?[:\s#]*(\d{3,})',
+    r'Lfs\.?[\-\s]*Nr\.?[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Lfs\.?[\-\s]*Nr\.?[:\s#]*(\d{3,})',
+]
+
+_LIEF_PATTERNS_MEDIUM = [
+    r'Delivery[\s]*(?:Note)?[\s]*(?:No\.?|Number)?[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Delivery[\s]*(?:Note)?[\s]*(?:No\.?|Number)?[:\s#]*(\d{3,})',
+    r'Beleg[\-\s]*Nr\.?[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Belegnummer[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'WA[\-\s]*Nr\.?[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Warenausgangs?[\-\s]*Nr\.?[:\s#]*(\d[\d\s\-/.]*\d)',
+    r'Versand[\-\s]*Nr\.?[:\s#]*(\d[\d\s\-/.]*\d)',
+]
 
 
 @app.route('/api/extract-liefernummer/<filename>')
 def extract_liefernummer(filename):
-    import re
-    safe_name = os.path.basename(filename)
+    safe = _safe_name(filename)
     config = load_config()
     ub_dir = config.get('unbearbeitet_dir', '')
 
     if not ub_dir or not os.path.isdir(ub_dir):
         return jsonify({'liefernummer': ''})
 
-    filepath = os.path.join(ub_dir, safe_name)
-    real = os.path.realpath(filepath)
-    if not real.startswith(os.path.realpath(ub_dir)) or not os.path.exists(filepath):
+    filepath = os.path.join(ub_dir, safe)
+    if not os.path.isfile(filepath) or not _is_within(filepath, ub_dir):
         return jsonify({'liefernummer': ''})
 
     try:
         from pypdf import PdfReader
         reader = PdfReader(filepath)
-        text = ''
+
+        # Extract text per page for prioritized search
+        pages_text = []
         for page in reader.pages:
             page_text = page.extract_text()
             if page_text:
-                text += page_text + '\n'
+                pages_text.append(_normalize_pdf_text(page_text))
 
-        # Verschiedene Muster für Liefernummer / Lieferschein-Nr.
-        patterns = [
-            r'Lieferschein[\-\s]*(?:Nr\.?)?[:\s]*(\d[\d\s\-/]*\d)',
-            r'Liefernummer[:\s]*(\d[\d\s\-/]*\d)',
-            r'LS[\-\s]*Nr\.?[:\s]*(\d[\d\s\-/]*\d)',
-            r'Liefer[\-\s]*Nr\.?[:\s]*(\d[\d\s\-/]*\d)',
-            r'Lieferscheinnummer[:\s]*(\d[\d\s\-/]*\d)',
-            r'Delivery[\s]*No\.?[:\s]*(\d[\d\s\-/]*\d)',
-        ]
+        # 1) High-confidence patterns — search first page first, then remaining
+        for scope in (pages_text[:1], pages_text[1:]):
+            search_text = '\n'.join(scope)
+            if not search_text:
+                continue
+            for pattern in _LIEF_PATTERNS_HIGH:
+                match = re.search(pattern, search_text, re.IGNORECASE)
+                if match:
+                    return jsonify({'liefernummer': _clean_liefernummer(match.group(1))})
 
-        for pattern in patterns:
-            match = re.search(pattern, text, re.IGNORECASE)
+        # 2) Medium-confidence patterns — full text
+        full_text = '\n'.join(pages_text)
+        for pattern in _LIEF_PATTERNS_MEDIUM:
+            match = re.search(pattern, full_text, re.IGNORECASE)
             if match:
-                nummer = match.group(1).strip()
-                return jsonify({'liefernummer': nummer})
+                return jsonify({'liefernummer': _clean_liefernummer(match.group(1))})
 
-        # Fallback: Nummer aus dem Dateinamen extrahieren
-        name_match = re.search(r'(\d{4,})', os.path.splitext(safe_name)[0])
+        # 3) Filename-based fallback
+        basename = os.path.splitext(safe)[0]
+
+        # Specific filename patterns (LS-123456, Lieferschein_789012)
+        fn_patterns = [
+            r'(?:LS|LF|Lief(?:erschein)?)[\-_\s]*(\d{4,})',
+        ]
+        for pattern in fn_patterns:
+            fn_match = re.search(pattern, basename, re.IGNORECASE)
+            if fn_match:
+                return jsonify({'liefernummer': fn_match.group(1)})
+
+        # Generic long number from filename (last resort)
+        name_match = re.search(r'(\d{4,})', basename)
         if name_match:
             return jsonify({'liefernummer': name_match.group(1)})
 
     except Exception as e:
-        print(f'Liefernummer-Extraktion fehlgeschlagen: {e}')
+        logger.warning('Liefernummer extraction failed: %s', e)
 
     return jsonify({'liefernummer': ''})
 
@@ -171,7 +382,7 @@ def save_signature():
     if not data:
         return jsonify({'error': 'Keine Daten erhalten'}), 400
 
-    filename = os.path.basename(data.get('filename', ''))
+    filename = _safe_name(data.get('filename', ''))
     name = data.get('name', '').strip()
     liefernummer = data.get('liefernummer', '').strip()
     signature_data = data.get('signature', '')
@@ -179,9 +390,9 @@ def save_signature():
     if not filename or not name or not liefernummer or not signature_data:
         return jsonify({'error': 'Name, Liefernummer und Unterschrift sind erforderlich'}), 400
 
-    # Neuen Dateinamen erstellen: Name-Liefernummer-Bearbeitet.pdf
-    safe_name = name.replace(' ', '')
-    new_filename = f'{safe_name}-{liefernummer}-Bearbeitet.pdf'
+    # Sanitize for folder/file names
+    safe_name_part = re.sub(r'[^\w\-]', '', name.replace(' ', ''))
+    safe_lief = re.sub(r'[^\w\-]', '', liefernummer)
 
     config = load_config()
     ub_dir = config.get('unbearbeitet_dir', '')
@@ -189,144 +400,121 @@ def save_signature():
     if not ub_dir or not ba_dir:
         return jsonify({'error': 'Verzeichnisse nicht konfiguriert'}), 500
 
-    base_name = os.path.splitext(filename)[0]
-    sign_dir = os.path.join(ba_dir, '.unterschriften')
-    os.makedirs(sign_dir, exist_ok=True)
+    original_pdf = os.path.join(ub_dir, filename)
+    if not os.path.isfile(original_pdf) or not _is_within(original_pdf, ub_dir):
+        return jsonify({'error': 'Originaldatei nicht gefunden'}), 404
 
-    # Info als JSON speichern
-    import datetime
+    # Create unique subfolder: Liefernummer_Name (with counter for duplicates)
+    folder_base = f'{safe_lief}_{safe_name_part}'
+    folder_path = os.path.join(ba_dir, folder_base)
+    if os.path.exists(folder_path):
+        counter = 2
+        while os.path.exists(os.path.join(ba_dir, f'{folder_base}_{counter}')):
+            counter += 1
+        folder_base = f'{folder_base}_{counter}'
+        folder_path = os.path.join(ba_dir, folder_base)
+    os.makedirs(folder_path, exist_ok=True)
+
+    datum = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     info = {
         'lieferschein': filename,
         'original_filename': filename,
-        'new_filename': new_filename,
+        'folder': folder_base,
         'name': name,
         'liefernummer': liefernummer,
-        'datum': datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        'datum': datum
     }
-    info_path = os.path.join(sign_dir, f'{base_name}_info.json')
+    info_path = os.path.join(folder_path, 'info.json')
     with open(info_path, 'w') as f:
         json.dump(info, f, indent=2, ensure_ascii=False)
 
-    # Unterschrift als PNG speichern
-    import base64
+    # Decode and save signature PNG
     if ',' in signature_data:
-        signature_data = signature_data.split(',')[1]
+        signature_data = signature_data.split(',', 1)[1]
     img_data = base64.b64decode(signature_data)
-    img_path = os.path.join(sign_dir, f'{base_name}_unterschrift.png')
+    img_path = os.path.join(folder_path, 'Unterschrift.png')
     with open(img_path, 'wb') as f:
         f.write(img_data)
 
-    # Unterschrift + Name ins PDF einbetten
+    # Embed signature into PDF
     try:
         from pypdf import PdfReader, PdfWriter
         from reportlab.pdfgen import canvas as rl_canvas
-        from reportlab.lib.units import mm
-        from io import BytesIO
 
-        original_pdf_path = os.path.join(ub_dir, filename)
-        reader = PdfReader(original_pdf_path)
+        reader = PdfReader(original_pdf)
         writer = PdfWriter()
-
-        # Nur auf die letzte Seite die Unterschrift setzen
-        last_page_index = len(reader.pages) - 1
+        last_idx = len(reader.pages) - 1
 
         for i, page in enumerate(reader.pages):
-            if i == last_page_index:
-                # Overlay mit Unterschrift + Name erstellen
-                page_width = float(page.mediabox.width)
-                page_height = float(page.mediabox.height)
+            if i == last_idx:
+                pw = float(page.mediabox.width)
+                ph = float(page.mediabox.height)
+                buf = BytesIO()
+                c = rl_canvas.Canvas(buf, pagesize=(pw, ph))
 
-                overlay_buffer = BytesIO()
-                c = rl_canvas.Canvas(overlay_buffer, pagesize=(page_width, page_height))
-
-                # Positionen: Name links, Unterschrift rechts, oberhalb des Footers
-                y_base = 120  # Weit genug über dem Footer
-
-                # Linie über alles
+                y_base = 120
                 c.setStrokeColorRGB(0.6, 0.6, 0.6)
                 c.setLineWidth(0.5)
-                c.line(40, y_base + 75, page_width - 40, y_base + 75)
+                c.line(40, y_base + 75, pw - 40, y_base + 75)
 
-                # Titel
                 c.setFont('Helvetica-Bold', 10)
                 c.drawString(40, y_base + 80, 'Empfangsbestätigung:')
 
-                # Links: Name + Datum
                 c.setFont('Helvetica', 10)
                 c.drawString(40, y_base + 50, f'Name: {name}')
-                c.drawString(40, y_base + 36, f'Datum: {info["datum"]}')
+                c.drawString(40, y_base + 36, f'Datum: {datum}')
 
-                # Rechts: Unterschrift-Bild
-                sig_x = page_width - 220
-                sig_y = y_base
-                sig_width = 180
-                sig_height = 70
-                c.drawImage(img_path, sig_x, sig_y, width=sig_width, height=sig_height,
-                           preserveAspectRatio=True, mask='auto')
-
-                # Kleine Linie unter der Unterschrift
+                sig_x = pw - 220
+                c.drawImage(img_path, sig_x, y_base, width=180, height=70,
+                            preserveAspectRatio=True, mask='auto')
                 c.setStrokeColorRGB(0, 0, 0)
-                c.line(sig_x, sig_y - 2, sig_x + sig_width, sig_y - 2)
+                c.line(sig_x, y_base - 2, sig_x + 180, y_base - 2)
                 c.setFont('Helvetica', 8)
-                c.drawString(sig_x, sig_y - 12, 'Unterschrift')
+                c.drawString(sig_x, y_base - 12, 'Unterschrift')
 
                 c.save()
-                overlay_buffer.seek(0)
-
-                overlay_reader = PdfReader(overlay_buffer)
-                overlay_page = overlay_reader.pages[0]
-                page.merge_page(overlay_page)
+                buf.seek(0)
+                overlay = PdfReader(buf)
+                page.merge_page(overlay.pages[0])
 
             writer.add_page(page)
 
-        # Signiertes PDF speichern (Original bleibt, signierte Version extra)
-        signed_pdf_path = os.path.join(sign_dir, f'{base_name}_signiert.pdf')
-        with open(signed_pdf_path, 'wb') as f:
+        # Save signed PDF into subfolder
+        signed_dest = os.path.join(folder_path, 'Bearbeitet.pdf')
+        with open(signed_dest, 'wb') as f:
             writer.write(f)
 
-        # Original-Backup erstellen (für späteres Wiederherstellen)
-        import shutil
-        backup_path = os.path.join(sign_dir, f'{base_name}_original.pdf')
-        if not os.path.exists(backup_path):
-            shutil.copy2(original_pdf_path, backup_path)
+        # Backup original into subfolder
+        backup_dest = os.path.join(folder_path, 'Original.pdf')
+        shutil.copy2(original_pdf, backup_dest)
 
-        # Signiertes PDF in den "Bearbeitet"-Ordner verschieben (mit neuem Namen)
-        os.makedirs(ba_dir, exist_ok=True)
-        dest = os.path.join(ba_dir, new_filename)
-        if os.path.exists(dest):
-            os.remove(dest)
-        shutil.move(signed_pdf_path, dest)
-
-        # Original-PDF aus Unbearbeitet entfernen
-        if os.path.exists(original_pdf_path):
-            os.remove(original_pdf_path)
+        # Remove original from Unbearbeitet
+        if os.path.exists(original_pdf):
+            os.remove(original_pdf)
 
     except Exception as e:
-        # Wenn PDF-Einbettung fehlschlägt, trotzdem Erfolg melden (Unterschrift ist als PNG gespeichert)
-        print(f'PDF-Einbettung fehlgeschlagen: {e}')
+        logger.error('PDF embedding failed: %s', e)
 
-    return jsonify({'success': True, 'message': 'Unterschrift gespeichert', 'new_filename': new_filename})
+    return jsonify({'success': True, 'message': 'Unterschrift gespeichert', 'folder': folder_base})
 
 
 @app.route('/api/status/<filename>')
 def check_status(filename):
-    safe_name = os.path.basename(filename)
+    safe = _safe_name(filename)
     config = load_config()
     ba_dir = config.get('bearbeitet_dir', '')
-    if not ba_dir:
+    if not ba_dir or not os.path.isdir(ba_dir):
         return jsonify({'signed': False})
 
-    sign_dir = os.path.join(ba_dir, '.unterschriften')
-    if not os.path.isdir(sign_dir):
-        return jsonify({'signed': False})
-
-    # Suche in allen Info-JSONs nach diesem Dateinamen (original oder neu)
-    for f in os.listdir(sign_dir):
-        if f.endswith('_info.json'):
-            info_path = os.path.join(sign_dir, f)
+    for entry in os.listdir(ba_dir):
+        sub = os.path.join(ba_dir, entry)
+        if not os.path.isdir(sub):
+            continue
+        info_path = os.path.join(sub, 'info.json')
+        if os.path.isfile(info_path):
             with open(info_path, 'r') as fh:
                 info = json.load(fh)
-            if info.get('new_filename') == safe_name or info.get('original_filename') == safe_name:
+            if info.get('original_filename') == safe or info.get('folder') == safe:
                 return jsonify({'signed': True, 'info': info})
 
     return jsonify({'signed': False})
@@ -338,7 +526,7 @@ def delete_signature():
     if not data:
         return jsonify({'error': 'Keine Daten erhalten'}), 400
 
-    filename = os.path.basename(data.get('filename', ''))
+    filename = _safe_name(data.get('filename', ''))
     if not filename:
         return jsonify({'error': 'Dateiname fehlt'}), 400
 
@@ -348,128 +536,75 @@ def delete_signature():
     if not ub_dir or not ba_dir:
         return jsonify({'error': 'Verzeichnisse nicht konfiguriert'}), 500
 
-    sign_dir = os.path.join(ba_dir, '.unterschriften')
-
-    # Info-JSON finden die zu dieser Datei gehört
-    import shutil
+    # Find the subfolder containing this document
     info = None
-    info_base = None
-    if os.path.isdir(sign_dir):
-        for f in os.listdir(sign_dir):
-            if f.endswith('_info.json'):
-                fpath = os.path.join(sign_dir, f)
-                with open(fpath, 'r') as fh:
+    folder_path = None
+    if os.path.isdir(ba_dir):
+        for entry in os.listdir(ba_dir):
+            sub = os.path.join(ba_dir, entry)
+            if not os.path.isdir(sub):
+                continue
+            info_file = os.path.join(sub, 'info.json')
+            if os.path.isfile(info_file):
+                with open(info_file, 'r') as fh:
                     candidate = json.load(fh)
-                if candidate.get('new_filename') == filename or candidate.get('original_filename') == filename:
+                if candidate.get('original_filename') == filename or candidate.get('folder') == filename:
                     info = candidate
-                    info_base = f.replace('_info.json', '')
+                    folder_path = sub
                     break
 
-    if not info:
+    if not info or not folder_path:
         return jsonify({'error': 'Keine Unterschrift-Daten gefunden'}), 404
 
+    # Restore original PDF back to Unbearbeitet
     original_filename = info.get('original_filename', filename)
-    new_filename = info.get('new_filename', filename)
-
-    # Backup (unsigniertes Original) zurück nach Unbearbeitet verschieben
-    backup_path = os.path.join(sign_dir, f'{info_base}_original.pdf')
+    backup_path = os.path.join(folder_path, 'Original.pdf')
     if os.path.exists(backup_path):
         shutil.move(backup_path, os.path.join(ub_dir, original_filename))
 
-    # Signierte Version aus Bearbeitet entfernen
-    bearbeitet_path = os.path.join(ba_dir, new_filename)
-    if os.path.exists(bearbeitet_path):
-        os.remove(bearbeitet_path)
-
-    # Unterschrift-Dateien löschen
-    for suffix in ['_info.json', '_unterschrift.png', '_signiert.pdf']:
-        path = os.path.join(sign_dir, f'{info_base}{suffix}')
-        if os.path.exists(path):
-            os.remove(path)
+    # Remove entire subfolder
+    shutil.rmtree(folder_path, ignore_errors=True)
 
     return jsonify({'success': True, 'message': 'Unterschrift gelöscht'})
 
 
 # ──────────────── Admin Routes ────────────────
 
-@app.route('/admin', methods=['GET', 'POST'])
+@app.route('/admin', methods=['GET'])
 def admin():
-    if request.method == 'POST':
-        password = request.form.get('password', '')
-        if password == ADMIN_PASSWORD:
-            session['is_admin'] = True
-            return redirect(url_for('admin_panel'))
-        return render_template('admin_login.html', error='Falsches Passwort')
-    if session.get('is_admin'):
-        return redirect(url_for('admin_panel'))
-    return render_template('admin_login.html')
+    return redirect(url_for('admin_panel'))
 
 
 @app.route('/admin/panel')
+@admin_required
 def admin_panel():
-    if not session.get('is_admin'):
-        return redirect(url_for('admin'))
     config = load_config()
     ub_dir = config.get('unbearbeitet_dir', '')
     ba_dir = config.get('bearbeitet_dir', '')
-    ub_count = len([f for f in os.listdir(ub_dir) if f.lower().endswith('.pdf')]) if ub_dir and os.path.isdir(ub_dir) else 0
-    ba_count = len([f for f in os.listdir(ba_dir) if f.lower().endswith('.pdf')]) if ba_dir and os.path.isdir(ba_dir) else 0
-    return render_template('admin.html', config=config, ub_count=ub_count, ba_count=ba_count)
-
-
-@app.route('/admin/upload', methods=['POST'])
-def admin_upload():
-    if not session.get('is_admin'):
-        return jsonify({'error': 'Nicht autorisiert'}), 403
-
-    config = load_config()
-    ub_dir = config.get('unbearbeitet_dir', '')
-    if not ub_dir:
-        return jsonify({'error': 'Unbearbeitet-Ordner nicht konfiguriert'}), 400
-
-    os.makedirs(ub_dir, exist_ok=True)
-
-    files = request.files.getlist('pdfs')
-    if not files:
-        return jsonify({'error': 'Keine Dateien ausgewählt'}), 400
-
-    uploaded = []
-    for f in files:
-        if f and f.filename and f.filename.lower().endswith('.pdf'):
-            safe_name = os.path.basename(f.filename)
-            dest = os.path.join(ub_dir, safe_name)
-            f.save(dest)
-            uploaded.append(safe_name)
-
-    if not uploaded:
-        return jsonify({'error': 'Keine gültigen PDF-Dateien'}), 400
-
-    return jsonify({'success': True, 'count': len(uploaded), 'files': uploaded})
+    return render_template(
+        'admin.html', config=config,
+        ub_count=len(_get_pdfs(ub_dir)),
+        ba_count=len(_get_pdfs(ba_dir))
+    )
 
 
 @app.route('/download/<filename>')
 def download_pdf(filename):
     config = load_config()
-    ba_dir = config.get('bearbeitet_dir', '')
-    ub_dir = config.get('unbearbeitet_dir', '')
+    safe = _safe_name(filename)
 
-    safe_name = os.path.basename(filename)
-
-    for d in [ba_dir, ub_dir]:
+    for d in [config.get('bearbeitet_dir', ''), config.get('unbearbeitet_dir', '')]:
         if d and os.path.isdir(d):
-            filepath = os.path.join(d, safe_name)
-            real = os.path.realpath(filepath)
-            if os.path.exists(filepath) and real.startswith(os.path.realpath(d)):
-                return send_file(filepath, as_attachment=True, download_name=safe_name)
+            filepath = os.path.join(d, safe)
+            if os.path.isfile(filepath) and _is_within(filepath, d):
+                return send_file(filepath, as_attachment=True, download_name=safe)
 
-    return 'Datei nicht gefunden', 404
+    abort(404)
 
 
 @app.route('/admin/save', methods=['POST'])
+@admin_required
 def admin_save():
-    if not session.get('is_admin'):
-        return jsonify({'error': 'Nicht autorisiert'}), 403
-
     data = request.get_json()
     key = data.get('key', '')
     directory = data.get('directory', '').strip()
@@ -489,15 +624,14 @@ def admin_save():
     config = load_config()
     config[key] = directory
     save_config(config)
+    _start_watcher()  # Restart watcher with new directories
 
     return jsonify({'success': True, 'message': 'Gespeichert'})
 
 
 @app.route('/admin/browse')
+@admin_required
 def admin_browse():
-    if not session.get('is_admin'):
-        return jsonify({'error': 'Nicht autorisiert'}), 403
-
     path = request.args.get('path', '/')
     path = os.path.realpath(path)
 
@@ -514,15 +648,14 @@ def admin_browse():
         return jsonify({'error': 'Zugriff verweigert'}), 403
 
     parent = os.path.dirname(path) if path != '/' else None
-    pdf_count = len([f for f in os.listdir(path) if f.lower().endswith('.pdf')]) if os.path.isdir(path) else 0
+    pdf_count = len([f for f in os.listdir(path) if f.lower().endswith('.pdf')])
 
     return jsonify({'path': path, 'parent': parent, 'folders': folders, 'pdf_count': pdf_count})
 
 
 @app.route('/admin/browse-native')
+@admin_required
 def admin_browse_native():
-    if not session.get('is_admin'):
-        return jsonify({'error': 'Nicht autorisiert'}), 403
     if not HAS_NATIVE_PICKER:
         return jsonify({'error': 'Nicht verfügbar'}), 501
     root = tk.Tk()
@@ -536,9 +669,8 @@ def admin_browse_native():
 
 
 @app.route('/admin/capabilities')
+@admin_required
 def admin_capabilities():
-    if not session.get('is_admin'):
-        return jsonify({'error': 'Nicht autorisiert'}), 403
     return jsonify({'native_picker': HAS_NATIVE_PICKER})
 
 
@@ -548,9 +680,28 @@ def admin_logout():
     return redirect(url_for('index'))
 
 
+# ──────────────── Health & Monitoring ────────────────
+
+@app.route('/health')
+def health():
+    config = load_config()
+    return jsonify({
+        'status': 'ok',
+        'unbearbeitet_ok': os.path.isdir(config.get('unbearbeitet_dir', '')),
+        'bearbeitet_ok': os.path.isdir(config.get('bearbeitet_dir', ''))
+    })
+
+
+# ──────────────── Entry Point ────────────────
+
 if __name__ == '__main__':
     config = load_config()
     os.makedirs(config['unbearbeitet_dir'], exist_ok=True)
     os.makedirs(config['bearbeitet_dir'], exist_ok=True)
     save_config(config)
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    _start_watcher()
+    socketio.run(
+        app, host='0.0.0.0', port=5000,
+        debug=os.environ.get('FLASK_DEBUG', '0') == '1',
+        allow_unsafe_werkzeug=os.environ.get('FLASK_DEBUG', '0') == '1'
+    )

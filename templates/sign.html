@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <title>Polytex - Lieferschein unterschreiben</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -11,11 +12,7 @@
 <body>
     <header>
         <a href="{{ url_for('index') }}" class="logo">
-            <svg viewBox="0 0 220 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <text x="0" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="32" fill="currentColor" style="color:var(--text-primary)">POLYTEX</text>
-                <path d="M168 8 L188 20 L168 32 Z" fill="#e63920"/>
-                <path d="M178 8 L198 20 L178 32 Z" fill="#e63920" opacity="0.6"/>
-            </svg>
+            <img src="{{ url_for('static', filename='Logo Polytex.png') }}" alt="Polytex" style="height: 36px;">
         </a>
         <div class="header-right">
             <button class="theme-toggle" id="theme-toggle" title="Design wechseln">
@@ -138,6 +135,20 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.2.67/pdf.min.mjs" type="module"></script>
     <script src="{{ url_for('static', filename='signature.js') }}"></script>
     <script>
+        // ── CSRF Fetch Override ──
+        (function() {
+            var orig = window.fetch;
+            var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            window.fetch = function(url, opts) {
+                if (csrfMeta && opts && opts.method && opts.method !== 'GET') {
+                    opts.headers = opts.headers || {};
+                    opts.headers['X-CSRF-Token'] = csrfMeta.content;
+                }
+                return orig.call(this, url, opts);
+            };
+        })();
+    </script>
+    <script>
         // ── Theme Toggle ──
         (function() {
             var toggle = document.getElementById('theme-toggle');
@@ -248,6 +259,15 @@
 
         loadPdf(pdfUrl);
 
+        // Auto-extract Liefernummer from PDF
+        fetch('/api/extract-liefernummer/' + encodeURIComponent(filename))
+            .then(r => r.json())
+            .then(data => {
+                if (data.liefernummer) {
+                    document.getElementById('liefernummer-input').value = data.liefernummer;
+                }
+            });
+
         // Check if already signed
         fetch('/api/status/' + encodeURIComponent(filename))
             .then(r => r.json())
@@ -294,13 +314,7 @@
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    document.getElementById('sign-section').style.display = 'none';
-                    document.getElementById('success-section').style.display = 'block';
-                    document.getElementById('success-info').textContent =
-                        'Unterschrieben von ' + name;
-                    if (data.new_filename) {
-                        loadPdf('/pdf/' + encodeURIComponent(data.new_filename));
-                    }
+                    window.location.href = '/';
                 } else {
                     window.showToast('Fehler: ' + data.error, 'error');
                     this.disabled = false;
