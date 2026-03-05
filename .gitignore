@@ -25,6 +25,5 @@ Desktop.ini
 
 # App
 config.json
-*.png
 *.pdf
 .unterschriften/

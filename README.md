@@ -21,7 +21,20 @@ Webbasierte Anwendung zur digitalen Signierung von PDF-Lieferscheinen. Mitarbeit
 
 ## Screenshots
 
-> *Screenshots hier einfügen*
+### Übersicht — Unbearbeitete Lieferscheine
+![Unbearbeitet](docs/screenshots/unbearbeitet.png)
+
+### PDF-Viewer mit Signaturformular
+![Signieren](docs/screenshots/sign.png)
+
+### Erfolgreich unterschrieben
+![Erfolg](docs/screenshots/success.png)
+
+### Übersicht — Bearbeitete Lieferscheine
+![Bearbeitet](docs/screenshots/bearbeitet.png)
+
+### Admin-Panel
+![Admin](docs/screenshots/admin.png)
 
 ## Voraussetzungen
 
