@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polytex - Admin</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <a href="{{ url_for('index') }}" class="logo">
+            <svg viewBox="0 0 220 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <text x="0" y="30" font-family="Inter, Arial, sans-serif" font-weight="800" font-size="32" fill="currentColor" style="color:var(--text-primary)">POLYTEX</text>
+                <path d="M168 8 L188 20 L168 32 Z" fill="#e63920"/>
+                <path d="M178 8 L198 20 L178 32 Z" fill="#e63920" opacity="0.6"/>
+            </svg>
+        </a>
+        <div class="header-right">
+            <button class="theme-toggle" id="theme-toggle" title="Design wechseln">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+            <a href="{{ url_for('admin_logout') }}" class="btn btn-small">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Abmelden
+            </a>
+        </div>
+    </header>
+
+    <main>
+        <div class="admin-box">
+            <div class="admin-header">
+                <h1>Einstellungen</h1>
+                <p>Verwalte die Ordner fur Lieferscheine und behalte den Uberblick.</p>
+            </div>
+
+            <!-- Stats -->
+            <div class="admin-stats">
+                <div class="stat-card">
+                    <div class="stat-icon orange">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-number">{{ ub_count }}</span>
+                        <span class="stat-label">Unbearbeitet</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon green">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 13"/></svg>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-number">{{ ba_count }}</span>
+                        <span class="stat-label">Bearbeitet</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Unbearbeitet Section -->
+            <div class="admin-section">
+                <div class="admin-section-header">
+                    <div class="admin-section-icon orange">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </div>
+                    <div>
+                        <div class="admin-section-title">Unbearbeitete Lieferscheine</div>
+                        <div class="admin-section-subtitle">Ordner mit neuen, noch nicht unterschriebenen PDFs</div>
+                    </div>
+                </div>
+                <div class="admin-section-body">
+                    <div class="selected-dir {% if config.unbearbeitet_dir %}configured{% else %}not-configured{% endif %}" id="dir-unbearbeitet">
+                        {% if config.unbearbeitet_dir %}
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <strong>{{ config.unbearbeitet_dir }}</strong>
+                        {% else %}
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <em>Noch kein Ordner ausgewahlt</em>
+                        {% endif %}
+                    </div>
+                    <button class="btn btn-secondary browse-btn" data-key="unbearbeitet_dir" style="margin-top: 12px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+                        Ordner andern
+                    </button>
+                </div>
+            </div>
+
+            <!-- Bearbeitet Section -->
+            <div class="admin-section">
+                <div class="admin-section-header">
+                    <div class="admin-section-icon green">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                    <div>
+                        <div class="admin-section-title">Bearbeitete Lieferscheine</div>
+                        <div class="admin-section-subtitle">Zielordner fur unterschriebene PDFs</div>
+                    </div>
+                </div>
+                <div class="admin-section-body">
+                    <div class="selected-dir {% if config.bearbeitet_dir %}configured{% else %}not-configured{% endif %}" id="dir-bearbeitet">
+                        {% if config.bearbeitet_dir %}
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <strong>{{ config.bearbeitet_dir }}</strong>
+                        {% else %}
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <em>Noch kein Ordner ausgewahlt</em>
+                        {% endif %}
+                    </div>
+                    <button class="btn btn-secondary browse-btn" data-key="bearbeitet_dir" style="margin-top: 12px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+                        Ordner andern
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // ── Theme Toggle ──
+        (function() {
+            var toggle = document.getElementById('theme-toggle');
+            var saved = localStorage.getItem('polytex-theme');
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+
+            toggle.addEventListener('click', function() {
+                document.documentElement.classList.add('theme-transition');
+                var current = document.documentElement.getAttribute('data-theme');
+                var next = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', next);
+                localStorage.setItem('polytex-theme', next);
+                setTimeout(function() { document.documentElement.classList.remove('theme-transition'); }, 500);
+
+                var existing = document.querySelector('.theme-popup');
+                if (existing) existing.remove();
+                var pill = document.createElement('div');
+                pill.className = 'theme-popup';
+                var icon = next === 'dark'
+                    ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+                    : '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+                pill.innerHTML = icon + '<span>' + (next === 'dark' ? 'Dark Mode' : 'Light Mode') + '</span>';
+                document.body.appendChild(pill);
+                setTimeout(function() { pill.classList.add('pill-out'); setTimeout(function() { pill.remove(); }, 300); }, 1800);
+            });
+        })();
+
+        // ── Toast System ──
+        function showToast(message, type) {
+            type = type || 'error';
+            var container = document.getElementById('toast-container');
+            var icons = {
+                error: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+                success: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 10 11 16 8 13"/></svg>',
+                warning: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>'
+            };
+            var toast = document.createElement('div');
+            toast.className = 'toast toast-' + type;
+            toast.innerHTML = '<div class="toast-icon">' + (icons[type] || icons.error) + '</div><div class="toast-body">' + message + '</div><button class="toast-close" onclick="this.parentElement.classList.add(\'toast-out\');var el=this.parentElement;setTimeout(function(){el.remove()},200)">&times;</button>';
+            container.appendChild(toast);
+            var ref = toast;
+            setTimeout(function() { ref.classList.add('toast-out'); setTimeout(function() { ref.remove(); }, 200); }, 4000);
+        }
+
+        // ── Folder Browse ──
+        document.querySelectorAll('.browse-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var key = this.dataset.key;
+                var button = this;
+                button.disabled = true;
+                button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Dialog offnet sich...';
+
+                fetch('/admin/browse')
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        button.disabled = false;
+                        button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg> Ordner auswahlen';
+
+                        if (data.error) { showToast(data.error, 'error'); return; }
+                        if (!data.selected) return;
+
+                        fetch('/admin/save', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ key: key, directory: data.selected })
+                        })
+                        .then(function(r) { return r.json(); })
+                        .then(function(result) {
+                            if (result.success) {
+                                var dirEl = document.getElementById('dir-' + key.replace('_dir', ''));
+                                dirEl.className = 'selected-dir configured';
+                                dirEl.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> <strong>' + data.selected + '</strong>';
+                                showToast('Ordner gespeichert', 'success');
+                            } else {
+                                showToast(result.error, 'error');
+                            }
+                        });
+                    })
+                    .catch(function() {
+                        button.disabled = false;
+                        button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg> Ordner auswahlen';
+                        showToast('Verbindungsfehler', 'error');
+                    });
+            });
+        });
+    </script>
+    <style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
+</body>
+</html>
